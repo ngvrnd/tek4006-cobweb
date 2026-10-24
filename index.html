@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An interactive logistic-map cobweb plot drawn like a Tektronix 4006 storage tube: green vectors that never fade until you press Page.">
+<meta property="og:title" content="Tek 4006 Cobweb">
+<meta property="og:description" content="An interactive logistic-map cobweb plot drawn like a Tektronix 4006 storage tube: green vectors that never fade until you press Page.">
+<meta property="og:type" content="website">
+<title>Tek 4006 Cobweb</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one terminal — storage-tube screen in a putty housing, a keypad-style control strip beneath. Single dark theme by choice. */
+:root {
+  --room: #16150f;
+  --housing: #2b2a24;
+  --housing-edge: #3d3b33;
+  --tube: #050a06;
+  --phosphor: #5dff8a;
+  --phosphor-dim: #2f8a4a;
+  --label: #b9b49f;
+  --label-dim: #7d796a;
+  --key: #3a3830;
+  --key-hi: #4a473d;
+  --font-tek: "VT323", "Courier New", monospace;
+  --font-ui: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--room); color: var(--label); }
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding-block: 24px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 960px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { font-family: var(--font-tek); font-size: 34px; font-weight: 400; color: var(--phosphor); margin: 0; letter-spacing: 0.02em; text-wrap: balance; }
+header p { margin: 0; color: var(--label-dim); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.housing { background: var(--housing); border: 1px solid var(--housing-edge); border-radius: 18px; padding: clamp(10px, 3vw, 28px); }
+.bezel { background: #000; border-radius: 12px; padding: clamp(6px, 1.5vw, 14px); }
+.screen { position: relative; width: 100%; max-width: 100%; aspect-ratio: 1024 / 780; background: var(--tube); border-radius: 8px; overflow: hidden; }
+.screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.plate { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--label-dim); }
+.readout { font-family: var(--font-tek); font-size: 22px; color: var(--phosphor); display: flex; flex-wrap: wrap; gap: 4px 24px; font-variant-numeric: tabular-nums; }
+.readout span b { font-weight: 400; color: var(--phosphor-dim); margin-right: 6px; }
+.panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 24px; }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--label-dim); display: flex; justify-content: space-between; }
+.ctl label output { color: var(--phosphor); font-family: var(--font-tek); font-size: 20px; letter-spacing: 0; line-height: 1; }
+input[type=range] { width: 100%; accent-color: var(--phosphor-dim); }
+select { background: var(--key); color: var(--label); border: 1px solid var(--housing-edge); border-radius: 6px; padding: 6px 8px; font-family: var(--font-ui); font-size: 13px; }
+.keys { display: flex; flex-wrap: wrap; gap: 8px; }
+button {
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--key); color: var(--label); border: 1px solid var(--housing-edge); border-bottom-width: 3px;
+  border-radius: 6px; padding: 8px 12px; cursor: pointer;
+}
+button:hover { background: var(--key-hi); }
+button:active { transform: translateY(1px); border-bottom-width: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--phosphor); outline-offset: 2px; }
+button.page { color: #f0d9a0; }
+button[aria-pressed=true] { color: var(--phosphor); border-color: var(--phosphor-dim); }
+.presets button { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.notes { color: var(--label-dim); font-size: 13px; line-height: 1.65; max-width: 68ch; display: grid; gap: 8px; }
+.notes p { margin: 0; }
+.notes b { color: var(--label); font-weight: 500; }
+</style>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>x ← r·x·(1−x)</h1>
+    <p>Cobweb plot on a direct-view storage tube</p>
+  </header>
+
+  <div class="housing">
+    <div class="bezel">
+      <div class="screen">
+        <canvas id="store" width="1024" height="780" aria-label="Storage tube display showing the parabola, the diagonal, and the cobweb of iterates"></canvas>
+        <canvas id="beam" width="1024" height="780" aria-hidden="true"></canvas>
+      </div>
+    </div>
+    <div class="plate"><span>Tektronix-style 4006 · 1024 × 780</span><span id="baudPlate">2400 baud</span></div>
+  </div>
+
+  <div class="readout" aria-live="polite">
+    <span><b>n</b><span id="oN">0</span></span>
+    <span><b>x</b><span id="oX">0.200000</span></span>
+    <span><b>r</b><span id="oR">3.20</span></span>
+    <span><b>x*</b><span id="oF">0.6875</span></span>
+    <span><b>beam</b><span id="oBeam">0,0</span></span>
+  </div>
+
+  <div class="panel">
+    <div class="ctl">
+      <label for="r">Growth r <output id="rOut">3.20</output></label>
+      <input type="range" id="r" min="2.5" max="4" step="0.005" value="3.2">
+    </div>
+    <div class="ctl">
+      <label for="x0">Start x₀ <output id="xOut">0.200</output></label>
+      <input type="range" id="x0" min="0.001" max="0.999" step="0.001" value="0.2">
+    </div>
+    <div class="ctl">
+      <label for="steps">Iterations per press <output id="stepsOut">25</output></label>
+      <input type="range" id="steps" min="1" max="200" step="1" value="25">
+    </div>
+    <div class="ctl">
+      <label for="baud">Line speed</label>
+      <select id="baud">
+        <option value="300">300 baud</option>
+        <option value="1200">1200 baud</option>
+        <option value="2400" selected>2400 baud</option>
+        <option value="9600">9600 baud</option>
+        <option value="0">Instant</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="keys">
+    <button id="iter">Iterate</button>
+    <button id="run" aria-pressed="false">Run</button>
+    <button id="restart">New orbit from x₀</button>
+    <button id="curve">Draw parabola</button>
+    <button id="page" class="page" title="Erase the screen">Page</button>
+  </div>
+
+  <div class="keys presets" aria-label="Presets">
+    <button data-r="2.8">r 2.8 · fixed point</button>
+    <button data-r="3.2">r 3.2 · period 2</button>
+    <button data-r="3.5">r 3.5 · period 4</button>
+    <button data-r="3.83">r 3.83 · period 3</button>
+    <button data-r="3.9">r 3.9 · chaos</button>
+    <button data-r="4">r 4 · full chaos</button>
+  </div>
+
+  <div class="notes">
+    <p><b>Like the real tube, nothing fades.</b> Every vector stays lit until you press Page, the Tek key that erases the screen. Changing r draws a new parabola on top of the old one, so you can stack several values and compare them. Where lines overlap they glow brighter, so in the chaotic range the most-visited parts of the curve slowly light up.</p>
+    <p><b>Line speed</b> imitates the serial line. Each vector cost about five bytes, so at 2400 baud the terminal drew roughly 50 vectors a second, which is why the cobweb unrolled step by step.</p>
+    <p>Keys: <b>Space</b> iterate, <b>R</b> run, <b>P</b> page.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const W = 1024, H = 780;
+  const store = document.getElementById('store'), sc = store.getContext('2d');
+  const beam = document.getElementById('beam'), bc = beam.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const PX = 172, PY = 50, PS = 680;
+  const tx = x => PX + x * PS;
+  const ty = y => H - PY - y * PS;
+
+  let r = +$('r').value, x0 = +$('x0').value, x = x0, n = 0;
+  let queue = [], running = false, budget = 0, last = performance.now();
+  let beamPos = [tx(0), ty(0)], flash = 0;
+
+  const fmt = (v, d) => v.toFixed(d);
+
+  function glow(ctx, a) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(93,255,138,${a})`;
+    ctx.fillStyle = `rgba(93,255,138,${a})`;
+    ctx.shadowColor = 'rgba(93,255,138,0.8)';
+    ctx.shadowBlur = 5;
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+  }
+
+  function drawItem(it) {
+    glow(sc, it.a ?? 0.5);
+    if (it.t === 'line') {
+      sc.beginPath(); sc.moveTo(it.x1, it.y1); sc.lineTo(it.x2, it.y2); sc.stroke();
+      beamPos = [it.x2, it.y2];
+    } else if (it.t === 'text') {
+      sc.font = '26px VT323, monospace';
+      sc.shadowBlur = 3;
+      sc.fillText(it.s, it.x, it.y);
+      beamPos = [it.x + sc.measureText(it.s).width, it.y];
+    } else if (it.t === 'orbit') {
+      const y = r * it.from * (1 - it.from);
+      const segs = [
+        { t: 'line', x1: tx(it.from), y1: ty(it.from), x2: tx(it.from), y2: ty(y), a: 0.45 },
+        { t: 'line', x1: tx(it.from), y1: ty(y), x2: tx(y), y2: ty(y), a: 0.45 }
+      ];
+      queue.unshift(...segs);
+      return false;
+    }
+    return true;
+  }
+
+  function line(x1, y1, x2, y2, a) { queue.push({ t: 'line', x1, y1, x2, y2, a }); }
+
+  function queueFrame() {
+    const a = 0.55;
+    line(tx(0), ty(0), tx(1), ty(0), a);
+    line(tx(1), ty(0), tx(1), ty(1), a);
+    line(tx(1), ty(1), tx(0), ty(1), a);
+    line(tx(0), ty(1), tx(0), ty(0), a);
+    for (let i = 1; i < 10; i++) {
+      const t = i / 10, k = i === 5 ? 14 : 8;
+      line(tx(t), ty(0), tx(t), ty(0) + k, a);
+      line(tx(0), ty(t), tx(0) - k, ty(t), a);
+    }
+    queue.push({ t: 'text', s: '0', x: tx(0) - 22, y: ty(0) + 26 });
+    queue.push({ t: 'text', s: '1', x: tx(1) - 6, y: ty(0) + 28 });
+    queue.push({ t: 'text', s: '1', x: tx(0) - 24, y: ty(1) + 8 });
+    queue.push({ t: 'text', s: 'x(n)', x: tx(0.5) - 20, y: ty(0) + 30 });
+    queue.push({ t: 'text', s: 'x(n+1)', x: 18, y: ty(0.5) + 8 });
+    const dashes = 40;
+    for (let i = 0; i < dashes; i++) {
+      const a0 = i / dashes, a1 = (i + 0.55) / dashes;
+      line(tx(a0), ty(a0), tx(a1), ty(a1), 0.35);
+    }
+  }
+
+  function queueCurve() {
+    const N = 96;
+    let px = 0, py = 0;
+    for (let i = 1; i <= N; i++) {
+      const xx = i / N, yy = r * xx * (1 - xx);
+      line(tx(px), ty(py), tx(xx), ty(yy), 0.6);
+      px = xx; py = yy;
+    }
+    const peak = r / 4;
+    queue.push({ t: 'text', s: 'R=' + fmt(r, 3), x: tx(0.5) - 36, y: ty(peak) - 14 });
+  }
+
+  function newOrbit() {
+    x = x0; n = 0;
+    line(tx(x), ty(0), tx(x), ty(0), 0.5);
+    updateReadout();
+  }
+
+  function iterate(k) {
+    let from = x;
+    for (let i = 0; i < k; i++) {
+      queue.push({ t: 'orbit', from });
+      from = r * from * (1 - from);
+    }
+    x = from; n += k;
+    updateReadout();
+  }
+
+  function erase() {
+    queue = [];
+    flash = 1;
+    sc.globalCompositeOperation = 'source-over';
+    sc.shadowBlur = 0;
+    sc.clearRect(0, 0, W, H);
+    queueFrame(); queueCurve(); newOrbit();
+  }
+
+  function updateReadout() {
+    $('oN').textContent = n;
+    $('oX').textContent = fmt(x, 6);
+    $('oR').textContent = fmt(r, 3);
+    $('oF').textContent = fmt(1 - 1 / r, 4);
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const baud = +$('baud').value;
+    if (baud === 0 || reduceMotion) {
+      let guard = 0;
+      while (queue.length && guard++ < 20000) { const it = queue.shift(); drawItem(it); }
+    } else {
+      budget += dt * baud / 10 / 5;
+      while (queue.length && budget >= 1) {
+        const it = queue.shift();
+        if (drawItem(it)) budget -= 1;
+      }
+      if (!queue.length) budget = Math.min(budget, 1);
+    }
+    if (running && queue.length < 4) iterate(1);
+
+    bc.clearRect(0, 0, W, H);
+    if (flash > 0) {
+      bc.globalCompositeOperation = 'source-over';
+      bc.fillStyle = `rgba(120,255,160,${0.85 * flash})`;
+      bc.fillRect(0, 0, W, H);
+      flash = Math.max(0, flash - dt * 2.2);
+    }
+    if (queue.length) {
+      bc.globalCompositeOperation = 'lighter';
+      bc.fillStyle = 'rgba(200,255,215,0.95)';
+      bc.shadowColor = 'rgba(93,255,138,1)';
+      bc.shadowBlur = 14;
+      bc.beginPath(); bc.arc(beamPos[0], beamPos[1], 3, 0, Math.PI * 2); bc.fill();
+      bc.shadowBlur = 0;
+    }
+    $('oBeam').textContent = Math.round(beamPos[0]) + ',' + Math.round(H - beamPos[1]);
+    requestAnimationFrame(frame);
+  }
+
+  function setR(v) {
+    r = v; $('r').value = v; $('rOut').textContent = fmt(r, 3);
+    queueCurve(); newOrbit();
+  }
+
+  let rTimer = null;
+  $('r').addEventListener('input', e => {
+    $('rOut').textContent = fmt(+e.target.value, 3);
+    clearTimeout(rTimer);
+    rTimer = setTimeout(() => setR(+e.target.value), 250);
+  });
+  $('x0').addEventListener('input', e => {
+    x0 = +e.target.value; $('xOut').textContent = fmt(x0, 3);
+  });
+  $('x0').addEventListener('change', newOrbit);
+  $('steps').addEventListener('input', e => { $('stepsOut').textContent = e.target.value; });
+  $('baud').addEventListener('change', e => {
+    const v = +e.target.value;
+    $('baudPlate').textContent = v ? v + ' baud' : 'Local';
+  });
+  $('iter').onclick = () => iterate(+$('steps').value);
+  const toggleRun = () => {
+    running = !running;
+    $('run').setAttribute('aria-pressed', running);
+    $('run').textContent = running ? 'Stop' : 'Run';
+  };
+  $('run').onclick = toggleRun;
+  $('restart').onclick = newOrbit;
+  $('curve').onclick = queueCurve;
+  $('page').onclick = erase;
+  document.querySelectorAll('[data-r]').forEach(b => b.onclick = () => setR(+b.dataset.r));
+  addEventListener('keydown', e => {
+    if (e.target.matches('input, select')) return;
+    if (e.key === ' ') { e.preventDefault(); iterate(+$('steps').value); }
+    else if (e.key === 'r' || e.key === 'R') toggleRun();
+    else if (e.key === 'p' || e.key === 'P') erase();
+  });
+
+  const start = () => {
+    queueFrame(); queueCurve(); newOrbit(); iterate(25);
+    requestAnimationFrame(t => { last = t; frame(t); });
+  };
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('26px VT323').then(start, start);
+  } else start();
+})();
+</script>
+</body>
+</html>
