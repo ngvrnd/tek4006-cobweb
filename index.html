@@ -66,6 +66,9 @@ button[aria-pressed=true] { color: var(--phosphor); border-color: var(--phosphor
 .notes { color: var(--label-dim); font-size: 13px; line-height: 1.65; max-width: 68ch; display: grid; gap: 8px; }
 .notes p { margin: 0; }
 .notes b { color: var(--label); font-weight: 500; }
+.notes a { color: var(--phosphor); }
+.keys { align-items: center; }
+.copymsg { font-family: var(--font-ui); font-size: 12px; color: var(--phosphor); min-width: 0; overflow-wrap: anywhere; user-select: all; }
 </style>
 <style>
 *, *::before, *::after { box-sizing: border-box; }
@@ -129,6 +132,8 @@ body { margin: 0; }
     <button id="restart">New orbit from x₀</button>
     <button id="curve">Draw parabola</button>
     <button id="page" class="page" title="Erase the screen">Page</button>
+    <button id="copy">Copy link</button>
+    <span id="copyMsg" class="copymsg" aria-live="polite"></span>
   </div>
 
   <div class="keys presets" aria-label="Presets">
@@ -144,6 +149,8 @@ body { margin: 0; }
     <p><b>Like the real tube, nothing fades.</b> Every vector stays lit until you press Page, the Tek key that erases the screen. Changing r draws a new parabola on top of the old one, so you can stack several values and compare them. Where lines overlap they glow brighter, so in the chaotic range the most-visited parts of the curve slowly light up.</p>
     <p><b>Line speed</b> imitates the serial line. Each vector cost about five bytes, so at 2400 baud the terminal drew roughly 50 vectors a second, which is why the cobweb unrolled step by step.</p>
     <p>Keys: <b>Space</b> iterate, <b>R</b> run, <b>P</b> page.</p>
+    <p><b>Sharing a setup.</b> The page's address keeps your r, x₀, iterations and line speed. Press Copy link and anyone who opens it starts from the same settings.</p>
+    <p>Companion page: the <a href="https://ngvrnd.github.io/lorenz-iris/">Lorenz attractor on the IRIS</a>, the same kind of chaos in three dimensions.</p>
   </div>
 </div>
 
@@ -154,6 +161,21 @@ body { margin: 0; }
   const beam = document.getElementById('beam'), bc = beam.getContext('2d');
   const $ = id => document.getElementById(id);
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const KEYS = ['r', 'x0', 'steps', 'baud'];
+  try {
+    const q = new URLSearchParams(location.hash.slice(1));
+    KEYS.forEach(k => {
+      if (!q.has(k) || !isFinite(+q.get(k))) return;
+      const el = $(k), old = el.value;
+      el.value = q.get(k);
+      if (el.value === '') el.value = old;
+    });
+  } catch (e) {}
+  $('rOut').textContent = (+$('r').value).toFixed(3);
+  $('xOut').textContent = (+$('x0').value).toFixed(3);
+  $('stepsOut').textContent = $('steps').value;
+  $('baudPlate').textContent = +$('baud').value ? $('baud').value + ' baud' : 'Local';
 
   const PX = 172, PY = 50, PS = 680;
   const tx = x => PX + x * PS;
@@ -331,6 +353,21 @@ body { margin: 0; }
   $('restart').onclick = newOrbit;
   $('curve').onclick = queueCurve;
   $('page').onclick = erase;
+
+  function writeHash() {
+    const q = new URLSearchParams();
+    KEYS.forEach(k => q.set(k, $(k).value));
+    const h = '#' + q.toString();
+    if (h !== location.hash) { try { history.replaceState(null, '', h); } catch (e) {} }
+  }
+  setInterval(writeHash, 1000);
+  $('copy').onclick = () => {
+    writeHash();
+    const url = location.href, msg = $('copyMsg');
+    const copied = () => { msg.textContent = 'Link copied'; setTimeout(() => { msg.textContent = ''; }, 2500); };
+    const fallback = () => { msg.textContent = url; };
+    try { navigator.clipboard.writeText(url).then(copied, fallback); } catch (e) { fallback(); }
+  };
   document.querySelectorAll('[data-r]').forEach(b => b.onclick = () => setR(+b.dataset.r));
   addEventListener('keydown', e => {
     if (e.target.matches('input, select')) return;
